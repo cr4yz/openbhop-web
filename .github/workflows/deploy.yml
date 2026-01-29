@@ -46,7 +46,8 @@ jobs:
           emcmake cmake -S . -B build-web -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_SHARED_LIBS=OFF \
-            -DRMLUI_SHARED=OFF 
+            -DRMLUI_SHARED=OFF \
+            -DCMAKE_EXE_LINKER_FLAGS="-sGL_ENABLE_GET_PROC_ADDRESS=1"
           cmake --build build-web
 
       # 4. Build Vite Website
@@ -61,8 +62,10 @@ jobs:
         run: |
           # Copy from game build folder to website dist folder
           # Adjust 'bh*' if your executable name in CMake is different
-          cp game-src/build-web/bh.js dist/
-          cp game-src/build-web/bh.wasm dist/
+          # cp game-src/build-web/bh.js dist/
+          # cp game-src/build-web/bh.wasm dist/
+            cp game-src/build-web/index.js dist/bh.js
+            cp game-src/build-web/index.wasm dist/index.wasm
           # If your game generates a .data file, uncomment the line below:
           # cp game-src/build-web/bh.data dist/ || true
 
