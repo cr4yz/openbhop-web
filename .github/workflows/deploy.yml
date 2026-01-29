@@ -1,18 +1,11 @@
-name: Build and Deploy
-
-on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:
-
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    
+    # 1. DEFINE EXACT CACHE LOCATIONS
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      EM_CACHE: ${{ github.workspace }}/.emscripten_cache
 
     steps:
       - name: Checkout Code
@@ -20,27 +13,26 @@ jobs:
         with:
           submodules: recursive
 
-      # --- CACHE LAYER 1: C++ & Emscripten ---
-      - name: Install ccache
+      - name: Install Ninja & ccache
         run: |
           sudo apt-get update
-          sudo apt-get install -y ccache
-          # Configure ccache size and directory
+          sudo apt-get install -y ninja-build ccache
+          # Ensure ccache dir exists immediately so cache action doesn't complain on restore
+          mkdir -p $CCACHE_DIR
           ccache --set-config=max_size=500M
 
-      - name: Cache C++ Build and Emscripten Libs
+      # 2. CACHE USING THE ENV VARIABLES
+      - name: Cache C++ and Emscripten
         uses: actions/cache@v4
         with:
-          # Cache both the ccache directory and emscripten's system ports
           path: |
-            ~/.ccache
-            ~/.emscripten_cache
-          # Key includes OS and a hash of your CMakeLists to reset if config changes
-          key: ${{ runner.os }}-wasm-build-${{ hashFiles('**/CMakeLists.txt') }}
+            ${{ env.CCACHE_DIR }}
+            ${{ env.EM_CACHE }}
+          # Bumped key to 'v2' to ensure we start fresh with correct paths
+          key: v2-${{ runner.os }}-wasm-${{ hashFiles('**/CMakeLists.txt') }}
           restore-keys: |
-            ${{ runner.os }}-wasm-build-
+            v2-${{ runner.os }}-wasm-
 
-      # --- CACHE LAYER 2: DXC Tool ---
       - name: Cache DXC Tool
         id: cache-dxc
         uses: actions/cache@v4
@@ -48,35 +40,29 @@ jobs:
           path: linux_dxc_2023_08_14.x86_64.tar.gz
           key: dxc-release-v1.7.2308
 
-      # 1. Install Dependencies (Ninja & DXC)
-      - name: Install Ninja & DXC
+      - name: Install DXC
         run: |
-          sudo apt-get install -y ninja-build
-          
-          # Only download if not found in cache
           if [ ! -f "linux_dxc_2023_08_14.x86_64.tar.gz" ]; then
              wget https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.7.2308/linux_dxc_2023_08_14.x86_64.tar.gz
           fi
-          
           tar xvf linux_dxc_2023_08_14.x86_64.tar.gz
           sudo cp bin/dxc /usr/local/bin/
           sudo chmod +x /usr/local/bin/dxc
           sudo cp lib/libdxcompiler.so /usr/local/lib/
-          dxc --version
 
-      # 2. Setup Emscripten
       - name: Setup Emscripten
         uses: mymindstorm/setup-emsdk@v14
         with:
           version: 3.1.51
 
-      # 3. Build WASM Game (With Incremental Flags)
       - name: Build WASM Game
         run: |
           cd game-src
           
-          # 1. We tell CMake to use ccache as a launcher
-          # 2. We use -DEMSCRIPTEN=1 explicitly if needed, but emcmake usually handles it
+          # 3. VERIFY DIRS EXIST (Optional safety check)
+          mkdir -p $CCACHE_DIR
+          mkdir -p $EM_CACHE
+
           emcmake cmake -S . -B build-web -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_SHARED_LIBS=OFF \
@@ -86,28 +72,27 @@ jobs:
             -DCMAKE_EXE_LINKER_FLAGS="-sGL_ENABLE_GET_PROC_ADDRESS=1"
           
           cmake --build build-web
+          
+          # 4. PRINT STATS (To verify ccache is actually working)
+          ccache -s
 
-      # --- CACHE LAYER 3: Node Modules ---
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm' # This automatically handles package-lock.json hashing
+          cache: 'npm'
 
-      # 4. Build Vite Website
       - name: Build Vite Site
         run: |
           npm install
           npm run build
 
-      # 5. Merge Game into Website
       - name: Copy Game Files to Dist
         run: |
            cp game-src/build-web/index.js dist/bh.js
            cp game-src/build-web/index.wasm dist/index.wasm
-           # cp game-src/build-web/bh.data dist/ || true
+           cp game-src/build-web/index.data dist/index.data
 
-      # 6. Upload to GitHub Pages
       - name: Upload Pages Artifact
         uses: actions/upload-pages-artifact@v3
         with:
