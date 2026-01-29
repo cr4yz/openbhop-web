@@ -38,15 +38,16 @@ jobs:
         with:
           version: 3.1.51 # Pinning version for stability
 
-      # 3. Build the Game (WASM)
+      # 3. Build WASM Game
       - name: Build WASM Game
         run: |
           cd game-src
-          emcmake cmake -S . -B build-web -G Ninja -DCMAKE_BUILD_TYPE=Release
+          # Added -DBUILD_SHARED_LIBS=OFF and -DRMLUI_SHARED=OFF
+          emcmake cmake -S . -B build-web -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DRMLUI_SHARED=OFF 
           cmake --build build-web
-          
-          # List files to confirm build output (debugging)
-          ls -R build-web
 
       # 4. Build Vite Website
       - name: Build Vite Site
