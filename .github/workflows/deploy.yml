@@ -25,10 +25,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ninja-build
-          # Install DXC (DirectX Shader Compiler) from Microsoft's releases
           wget https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.7.2308/linux_dxc_2023_08_14.x86_64.tar.gz
           tar xvf linux_dxc_2023_08_14.x86_64.tar.gz
           sudo cp bin/dxc /usr/local/bin/
+          sudo chmod +x /usr/local/bin/dxc    # Add this line
           sudo cp lib/libdxcompiler.so /usr/local/lib/
           dxc --version
 
