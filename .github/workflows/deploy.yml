@@ -1,0 +1,75 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # 1. Install Dependencies (Ninja & DXC)
+      - name: Install Ninja & DXC
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+          # Install DXC (DirectX Shader Compiler) from Microsoft's releases
+          wget https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.7.2308/linux_dxc_2023_08_14.x86_64.tar.gz
+          tar xvf linux_dxc_2023_08_14.x86_64.tar.gz
+          sudo cp bin/dxc /usr/local/bin/
+          sudo cp lib/libdxcompiler.so /usr/local/lib/
+          dxc --version
+
+      # 2. Setup Emscripten
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.51 # Pinning version for stability
+
+      # 3. Build the Game (WASM)
+      - name: Build WASM Game
+        run: |
+          cd game-src
+          emcmake cmake -S . -B build-web -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-web
+          
+          # List files to confirm build output (debugging)
+          ls -R build-web
+
+      # 4. Build Vite Website
+      - name: Build Vite Site
+        run: |
+          npm install
+          npm run build
+
+      # 5. Merge Game into Website
+      # We copy the built .wasm, .js, and .data files into the Vite 'dist' folder
+      - name: Copy Game Files to Dist
+        run: |
+          # Copy from game build folder to website dist folder
+          # Adjust 'bh*' if your executable name in CMake is different
+          cp game-src/build-web/bh.js dist/
+          cp game-src/build-web/bh.wasm dist/
+          # If your game generates a .data file, uncomment the line below:
+          # cp game-src/build-web/bh.data dist/ || true
+
+      # 6. Upload to GitHub Pages
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./dist
+
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4
